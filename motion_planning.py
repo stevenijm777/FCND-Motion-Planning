@@ -45,11 +45,11 @@ class MotionPlanning(Drone):
             if -1.0 * self.local_position[2] > 0.95 * self.target_position[2]:
                 self.waypoint_transition()
         elif self.flight_state == States.WAYPOINT:
-            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 1.0:
+            if np.linalg.norm(self.target_position[0:2] - self.local_position[0:2]) < 2.0:
                 if len(self.waypoints) > 0:
                     self.waypoint_transition()
                 else:
-                    if np.linalg.norm(self.local_velocity[0:2]) < 1.0:
+                    if np.linalg.norm(self.local_velocity[0:2]) < 2.0:
                         self.landing_transition()
 
     def velocity_callback(self):
@@ -112,6 +112,37 @@ class MotionPlanning(Drone):
         self.connection._master.write(data)
 
 
+    # Path Pruning
+    def point(self, p):
+        return np.array([p[0], p[1], 1.]).reshape(1, -1)
+
+    def collinearity_check(self,p1, p2, p3, epsilon=1e-6):
+        m = np.concatenate((p1, p2, p3), 0)
+        det = np.linalg.det(m)
+        return abs(det) < epsilon
+
+    def prune_path(self, path):
+        pruned_path = [p for p in path]
+        i = 0
+        while i < len(pruned_path) -2:
+            p1 = self.point(pruned_path[i])
+            p2 = self.point(pruned_path[i+1])
+            p3 = self.point(pruned_path[i+2])
+
+            # If the 3 points are in a line remove
+            # the 2nd point
+            # the 3rd point now becomes and 2nd point
+            # and the check is redone with a new third point
+            # on the next interaction
+            if self.collinearity_check(p1, p2, p3):
+                # Something subtle here but we can mutate
+                # 'pruned_path' freely because the length
+                # of the list is check on every iteration
+                pruned_path.remove(pruned_path[i+1])
+            else:
+                i +=1
+        return pruned_path
+
 
     def plan_path(self):
         self.flight_state = States.PLANNING
@@ -148,8 +179,8 @@ class MotionPlanning(Drone):
         # Set goal as some arbitrary position on the grid
         #grid_goal = (-north_offset + 10, -east_offset + 10)
         # TODO: adapt to set goal as latitude / longitude position and convert
-        goal_lon = -122.3974193
-        goal_lat = 37.7922263
+        goal_lon = -122.3985053
+        goal_lat = 37.7936083
         local_goal = global_to_local((goal_lon, goal_lat, TARGET_ALTITUDE), self.global_home)
         grid_goal = (int(-north_offset+local_goal[0]), int(-east_offset+local_goal[1]))
         # Run A* to find a path from start to goal
@@ -157,11 +188,13 @@ class MotionPlanning(Drone):
         # or move to a different search space such as a graph (not done here)
         print('Local Start and Goal: ', grid_start, grid_goal)
         path, _ = a_star(grid, heuristic, grid_start, grid_goal)
+        print('Path: ', len(path))
         # TODO: prune path to minimize number of waypoints
         # TODO (if you're feeling ambitious): Try a different approach altogether!
-
+        pruned_path = self.prune_path(path)
+        print('pruned path: ', len(pruned_path))
         # Convert path to waypoints
-        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in path]
+        waypoints = [[p[0] + north_offset, p[1] + east_offset, TARGET_ALTITUDE, 0] for p in pruned_path]
         # Set self.waypoints
         self.waypoints = waypoints
         # TODO: send waypoints to sim (this is just for visualization of waypoints)
