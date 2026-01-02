@@ -154,3 +154,33 @@ def a_star(grid, h, start, goal):
 def heuristic(position, goal_position):
     return np.linalg.norm(np.array(position) - np.array(goal_position))
 
+def bresenham(p1, p2):
+    """
+    Bresenham's line algorithm between p1 and p2.
+    Returns a list of grid cells from p1 to p2 inclusive.
+    """
+    x1, y1 = p1
+    x2, y2 = p2
+    cells = []
+
+    dx = abs(x2 - x1)
+    dy = abs(y2 - y1)
+    sx = 1 if x1 < x2 else -1
+    sy = 1 if y1 < y2 else -1
+    err = dx - dy
+
+    while True:
+        cells.append((x1, y1))
+        if x1 == x2 and y1 == y2:
+            break
+        e2 = 2 * err
+        if e2 > -dy:
+            err -= dy
+            x1 += sx
+        if e2 < dx:
+            err += dx
+            y1 += sy
+
+    return cells
+
+
